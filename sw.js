@@ -1,6 +1,6 @@
 /* Maths Sports Day — offline support.
    When you change any file, bump the version below so phones pick up the update. */
-var CACHE = 'maths-sports-day-v1';
+var CACHE = 'maths-sports-day-v2';
 var ASSETS = ['./', 'index.html', 'style.css', 'app.js', 'q-core.js', 'q-y7.js', 'q-y8.js', 'q-y9.js', 'qrcode.js',
   'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'];
 

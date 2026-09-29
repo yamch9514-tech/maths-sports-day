@@ -126,7 +126,7 @@
       '<div class="levelrow"><span>' + lv.name + '</span><span>' + (lv.to ? (lv.to - S.xp) + ' XP to ' + lv.nextName : 'Top level!') + '</span></div>' +
       '<div class="events">' + evs +
       '<button class="event" data-act="challenge"><span class="ic c">🎟️</span><span><h3>Class Challenge</h3><p>Got a code from your teacher? Everyone gets the same questions.</p></span></button></div>' +
-      '<div class="homefoot"><button class="btn ghost" data-act="trophies">🏆 Trophies</button><button class="btn ghost" data-act="settings">⚙️ Settings</button><button class="btn ghost" data-act="teacher">🧑‍🏫 Teacher</button></div>' +
+      '<div class="homefoot"><button class="btn ghost" data-act="trophies">🏆 Trophies</button><button class="btn ghost" data-act="settings">⚙️ Settings</button>' + (S.teacher ? '<button class="btn ghost" data-act="teacher">🧑‍🏫 Teacher</button>' : '') + '</div>' +
       '<p class="note" style="text-align:center">Tip: keep paper and a pencil next to you for working out.</p>');
   }
 
@@ -529,6 +529,58 @@
       '<div class="card"><h2>Start over</h2><p class="note" style="margin-top:0">This deletes your name, medals and personal bests from this phone.</p><button class="btn ghost block" data-act="reset" id="resetbtn">Reset my progress</button></div>');
   }
 
+  /* ---------------- Teacher lock ----------------
+     The Teacher corner is hidden from students. Open it with the private link (…/#teacher) and the teacher PIN.
+     The PIN itself is not in this code: only a salted PBKDF2 hash of it, so reading the public source doesn't reveal it. */
+  var PIN_SALT = '2e7b24028112d3b62d39a6730cb377cc';
+  var PIN_HASH = '41872a0da225c8cced1cde218bc404d5f18c6538952db99532dc5509fe95cc57';
+  var PIN_ITER = 150000;
+  var pinFails = 0, pinLockUntil = 0;
+  function toHex(buf) { return Array.prototype.map.call(new Uint8Array(buf), function (b) { return (b < 16 ? '0' : '') + b.toString(16); }).join(''); }
+  function fromHex(h) { var a = new Uint8Array(h.length / 2); for (var i = 0; i < a.length; i++) a[i] = parseInt(h.substr(i * 2, 2), 16); return a; }
+  function checkPin(pin) {
+    if (!(window.crypto && crypto.subtle && window.TextEncoder)) return Promise.resolve(false);
+    return crypto.subtle.importKey('raw', new TextEncoder().encode(pin), 'PBKDF2', false, ['deriveBits'])
+      .then(function (key) { return crypto.subtle.deriveBits({ name: 'PBKDF2', salt: fromHex(PIN_SALT), iterations: PIN_ITER, hash: 'SHA-256' }, key, 256); })
+      .then(function (bits) { return toHex(bits) === PIN_HASH; })
+      .catch(function () { return false; });
+  }
+  function teacherGate() {
+    if (S.teacher) { teacher(); return; }
+    view('pin', '<div class="playbar"><button class="iconbtn" data-act="home" aria-label="Back">←</button><div class="title">🔒 Teacher corner<small>For teachers only</small></div><span></span></div>' +
+      '<div class="card"><h2>Teacher PIN</h2><p class="note" style="margin-top:0">Enter your PIN to open the Teacher corner on this device.</p>' +
+      '<div class="field"><input id="tpin" class="input" type="password" inputmode="numeric" autocomplete="off" maxlength="12" aria-label="Teacher PIN" style="text-align:center;letter-spacing:8px;font-size:28px;font-family:var(--font-display);font-weight:800"></div>' +
+      '<div id="pinmsg" class="note" role="status" style="min-height:1.4em"></div>' +
+      '<button class="btn block" data-act="unlock" style="margin-top:8px">Unlock</button></div>');
+    var inp = document.getElementById('tpin');
+    inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') tryUnlock(); });
+    setTimeout(function () { inp.focus(); }, 50);
+  }
+  function tryUnlock() {
+    var inp = document.getElementById('tpin'), msg = document.getElementById('pinmsg');
+    if (!inp) return;
+    var wait = pinLockUntil - Date.now();
+    if (wait > 0) { msg.textContent = 'Please wait ' + Math.ceil(wait / 1000) + ' s, then try again.'; return; }
+    var pin = (inp.value || '').replace(/\s+/g, '');
+    if (!pin) { msg.textContent = 'Type the PIN first.'; return; }
+    msg.textContent = 'Checking…';
+    checkPin(pin).then(function (ok) {
+      if (ok) { pinFails = 0; S.teacher = true; save(); teacher(); toast('🔓 Teacher mode is on for this device'); return; }
+      pinFails++; pinLockUntil = Date.now() + Math.min(30000, 1000 * Math.pow(2, pinFails));
+      inp.value = ''; SFX.bad();
+      msg.innerHTML = '<span style="color:var(--bad);font-weight:700">That PIN isn’t right.</span>';
+    });
+  }
+  function lockTeacher() { S.teacher = false; save(); toast('🔒 Teacher mode locked'); home(); }
+  function openTeacherFromURL() {
+    var h = (location.hash || '').toLowerCase(), q = (location.search || '').toLowerCase();
+    if (h !== '#teacher' && !/[?&]teacher\b/.test(q)) return false;
+    try { history.replaceState(null, '', location.pathname); } catch (e) { /* ignore */ }
+    teacherGate();
+    return true;
+  }
+  window.addEventListener('hashchange', function () { if (!run || run.done) openTeacherFromURL(); });
+
   /* ---------------- Teacher ---------------- */
   var tYear = 0, tEv = 'R', lastCode = '';
   function siteURL() { return location.href.split('#')[0].split('?')[0]; }
@@ -560,7 +612,9 @@
       '<h3>Wellbeing by design</h3><ul><li>Medals reward accuracy, and every student can win gold.</li><li>Personal bests matter more than beating others. Only Challenge result cards are compared.</li><li>Every wrong answer shows a worked solution, so it becomes a learning moment.</li><li>Scores stay on each phone. There are no public leaderboards and no accounts.</li></ul>' +
       '<h3>Tips</h3><ul><li>Ask students to mute sound effects in ⚙️ Settings during lessons.</li><li>Students can add the game to their home screen (browser menu → “Add to Home screen”). It then works offline too.</li><li>Keep paper and pencils handy. Questions use π = 3.14 and don’t need a calculator.</li></ul></div>' +
       '<div class="card coverage"><h2>4 · What’s inside</h2><p class="note" style="margin-top:0">Questions are generated fresh every time, so no two races are the same. Each year uses its own Learner’s Book units, tiered 🥉 Bronze → 🥈 Silver → 🥇 Gold.</p>' + cov +
-      '<button class="btn block navy" data-act="preview" style="margin-top:12px">🔎 Preview every question type</button></div>');
+      '<button class="btn block navy" data-act="preview" style="margin-top:12px">🔎 Preview every question type</button></div>' +
+      '<div class="card"><h2>5 · Teacher mode on this device</h2><p class="note" style="margin-top:0">Students never see the Teacher button. It only appears on devices where the PIN has been entered. To open the Teacher corner on another device, use your private link (the game link with <b>#teacher</b> at the end) and your PIN.</p>' +
+      '<button class="btn block ghost" data-act="lockteacher">🔒 Lock teacher mode on this device</button></div>');
   }
   var pvYear = 0;
   function preview(y) {
@@ -601,6 +655,7 @@
   }
 
   /* ---------------- Actions ---------------- */
+  function teacherOnly(f) { return function (b, e) { if (!S.teacher) { teacherGate(); return; } f(b, e); }; }
   var ACT = {
     pickcls: function (b) { pendingCls = +b.dataset.y; document.querySelectorAll('.choice').forEach(function (c) { c.classList.toggle('on', c === b); }); },
     join: function () {
@@ -610,7 +665,7 @@
       var changed = S.cls !== pendingCls;
       S.name = nm; S.cls = pendingCls; if (changed) S.year = pendingCls; save(); home();
     },
-    home: function () { closeOverlay(); home(); },
+    home: function () { closeOverlay(); if (S.name && S.cls) home(); else welcome(); },
     year: chooseYear,
     setyear: function (b) { S.year = +b.dataset.y; save(); closeOverlay(); home(); },
     close: closeOverlay,
@@ -628,7 +683,9 @@
     again: function () { var o = { event: run.event, year: run.year, topic: run.topic, code: run.code }; startRun(o); },
     trophies: trophies,
     settings: settings,
-    teacher: teacher,
+    teacher: teacherGate,
+    unlock: tryUnlock,
+    lockteacher: lockTeacher,
     toggle: function (b) { var k = b.dataset.k; S[k] = !S[k]; save(); b.classList.toggle('on', S[k]); b.setAttribute('aria-pressed', S[k]); if (k === 'sound' && S.sound) SFX.ok(); },
     edit: welcome,
     reset: function (b) {
@@ -637,14 +694,14 @@
     },
     tyear: function (b) { tYear = +b.dataset.y; document.querySelectorAll('[data-act="tyear"]').forEach(function (x) { x.classList.toggle('on', x === b); }); },
     tev: function (b) { tEv = b.dataset.e; document.querySelectorAll('[data-act="tev"]').forEach(function (x) { x.classList.toggle('on', x === b); }); },
-    makecode: makeCode,
-    copycode: function () { copy(lastCode); },
-    copyurl: function () { copy(siteURL()); },
-    fullqr: fullQR,
-    preview: function () { preview(); },
-    pvyear: function (b) { preview(+b.dataset.y); },
-    pvnew: function () { preview(pvYear); },
-    trycode: function () { var c = parseCode(lastCode); if (c) startRun({ event: c.event, year: c.year, code: c.code }); }
+    makecode: teacherOnly(makeCode),
+    copycode: teacherOnly(function () { copy(lastCode); }),
+    copyurl: teacherOnly(function () { copy(siteURL()); }),
+    fullqr: teacherOnly(fullQR),
+    preview: teacherOnly(function () { preview(); }),
+    pvyear: teacherOnly(function (b) { preview(+b.dataset.y); }),
+    pvnew: teacherOnly(function () { preview(pvYear); }),
+    trycode: teacherOnly(function () { var c = parseCode(lastCode); if (c) startRun({ event: c.event, year: c.year, code: c.code }); })
   };
   document.addEventListener('click', function (e) {
     var b = e.target.closest('[data-act]');
@@ -669,7 +726,7 @@
   });
 
   /* ---------------- Start ---------------- */
-  if (S.name && S.cls) home(); else welcome();
+  if (!openTeacherFromURL()) { if (S.name && S.cls) home(); else welcome(); }
   if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
     window.addEventListener('load', function () { navigator.serviceWorker.register('sw.js').catch(function () { /* offline support unavailable */ }); });
   }

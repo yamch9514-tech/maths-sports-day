@@ -22,7 +22,7 @@ Students earn XP and level up: Rookie → Club Runner → County Athlete → Nat
 
 ## For teachers
 
-Open **🧑‍🏫 Teacher** on the home screen:
+The Teacher corner is **hidden from students**. Open it with your private link, which is the game link with `#teacher` added to the end, then enter your teacher PIN. After that, a **🧑‍🏫 Teacher** button appears on the home screen of that device only. You can lock it again from inside the Teacher corner.
 
 1. **Share.** Project the QR code (there’s a full-screen button). Students scan it with their camera.
 2. **Class Challenge.** Choose a year and an event, then tap *Create code*. Codes look like `7S-MANGO27` (year, then **S**print / **R**elay / **M**arathon). You can also invent your own, e.g. `9R-FRIDAY`.
